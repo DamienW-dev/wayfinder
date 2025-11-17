@@ -36,67 +36,54 @@ export const queryParams = (options?: RouteQueryOptions) => {
     const includeExisting = options.mergeQuery !== undefined;
 
     const getValue = (value: string | number | boolean) => {
-        if (value === true) {
-            return "1";
-        }
-
-        if (value === false) {
-            return "0";
-        }
-
-        return value.toString();
+        return value === true ? "1" : value === false ? "0" : value.toString();
     };
 
     const params = new URLSearchParams(
         includeExisting && typeof window !== "undefined"
             ? window.location.search
-            : "",
+            : ""
     );
 
     for (const key in query) {
-        if (query[key] === undefined || query[key] === null) {
+        const val = query[key];
+
+        if (val === undefined || val === null) {
             params.delete(key);
             continue;
         }
 
-        if (Array.isArray(query[key])) {
-            if (params.has(`${key}[]`)) {
-                params.delete(`${key}[]`);
-            }
+        // ---- string[] ----
+        if (Array.isArray(val)) {
+            params.delete(`${key}[]`);
+            val.forEach((item) => params.append(`${key}[]`, item.toString()));
+            continue;
+        }
 
-            query[key].forEach((value) => {
-                params.append(`${key}[]`, value.toString());
-            });
-        } else if (typeof query[key] === "object") {
+        // ---- Record<string, primitive> ----
+        if (typeof val === "object") {
+            const record = val as Record<string, string | number | boolean>;
+
             params.forEach((_, paramKey) => {
                 if (paramKey.startsWith(`${key}[`)) {
                     params.delete(paramKey);
                 }
             });
 
-            for (const subKey in query[key]) {
-                if (typeof query[key][subKey] === "undefined") {
-                    continue;
-                }
-
-                if (
-                    ["string", "number", "boolean"].includes(
-                        typeof query[key][subKey],
-                    )
-                ) {
-                    params.set(
-                        `${key}[${subKey}]`,
-                        getValue(query[key][subKey]),
-                    );
+            for (const subKey in record) {
+                const subVal = record[subKey];
+                if (subVal !== undefined) {
+                    params.set(`${key}[${subKey}]`, getValue(subVal));
                 }
             }
-        } else {
-            params.set(key, getValue(query[key]));
+            continue;
         }
+
+        // ---- primitive ----
+        params.set(key, getValue(val));
     }
 
     const str = params.toString();
-
     return str.length > 0 ? `?${str}` : "";
 };
 
@@ -106,22 +93,19 @@ export const setUrlDefaults = (params: Record<string, unknown>) => {
 
 export const addUrlDefault = (
     key: string,
-    value: string | number | boolean,
+    value: string | number | boolean
 ) => {
     urlDefaults[key] = value;
 };
 
 export const applyUrlDefaults = <T extends Record<string, unknown> | undefined>(
-    existing: T,
+    existing: T
 ): T => {
     const existingParams = { ...(existing ?? ({} as Record<string, unknown>)) };
 
     for (const key in urlDefaults) {
-        if (
-            existingParams[key] === undefined &&
-            urlDefaults[key] !== undefined
-        ) {
-            (existingParams as Record<string, unknown>)[key] = urlDefaults[key];
+        if (existingParams[key] === undefined && urlDefaults[key] !== undefined) {
+            existingParams[key] = urlDefaults[key];
         }
     }
 
@@ -130,15 +114,15 @@ export const applyUrlDefaults = <T extends Record<string, unknown> | undefined>(
 
 export const validateParameters = (
     args: Record<string, unknown> | undefined,
-    optional: string[],
+    optional: string[]
 ) => {
     const missing = optional.filter((key) => !args?.[key]);
-    const expectedMissing = optional.slice(missing.length * -1);
+    const expectedMissing = optional.slice(-missing.length);
 
     for (let i = 0; i < missing.length; i++) {
         if (missing[i] !== expectedMissing[i]) {
-            throw Error(
-                "Unexpected optional parameters missing. Unable to generate a URL.",
+            throw new Error(
+                "Unexpected optional parameters missing. Unable to generate a URL."
             );
         }
     }
